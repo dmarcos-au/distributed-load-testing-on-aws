@@ -1,11 +1,11 @@
 /*******************************************************************************
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved. 
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Amazon Software License (the "License").
  * You may not use this file except in compliance with the License.
  * A copy of the License is located at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0    
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
  * or in the "license" file accompanying this file. This file is distributed
  * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
@@ -14,7 +14,7 @@
  *
  ********************************************************************************/
 
-const AWS = require('aws-sdk'); 
+const AWS = require('aws-sdk');
 
 
 exports.handler = async (event) => {
@@ -29,6 +29,7 @@ exports.handler = async (event) => {
     }); 
  
     const body = JSON.parse(event.Records[0].body);
+    console.log(`Body: ${JSON.stringify(body)}`);
     const testId = body.testId;
     const taskCount = body.taskCount;
 
@@ -50,41 +51,54 @@ exports.handler = async (event) => {
                     'subnets': [ 
                         process.env.SUBNET_A, 
                         process.env.SUBNET_B
-                    ] 
-                } 
-            }, 
-            overrides: { 
-                'containerOverrides': [{ 
-                    'name': process.env.TASK_IMAGE, 
-                    'environment': [{ 
-                            'name': 'S3_BUCKET', 
-                            'value': process.env.SCENARIOS_BUCKET 
-                        }, 
-                        { 
-                            'name': 'TEST_ID', 
-                            'value': testId 
-                        } 
-                    ] 
-                }] 
-            } 
-        }; 
- 
-        /** 
-        * The max number of containers (taskCount) per task execution is 10 so if the taskCount is 
-        * more than 10 the task definition will need to be run multiple times. 
-        * @runTaskCount is the number of sets of 10 in the taskCount 
-        * @remainingCount is the remaining count which is a number between 1 and 10 
-        */ 
-        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms)); 
-        const runTaskCount = Math.ceil(taskCount/10 -1); 
+                    ]
+                }
+            },
+            overrides: {
+                'containerOverrides': [{
+                    'name': process.env.TASK_IMAGE,
+                    'environment': [{
+                            'name': 'S3_BUCKET',
+                            'value': process.env.SCENARIOS_BUCKET
+                        },
+                        {
+                            'name': 'SQS_URL',
+                            'value': process.env.SQS_URL
+                        },
+                        {
+                            'name': 'TEST_ID',
+                            'value': testId
+                        },
+                        {
+                            'name': 'RUN_REPORT',
+                            'value': body.runReport
+                        },
+                        {
+                            'name': 'TEST_RUN',
+                            'value': body.testRun
+                        }
+                    ]
+                }]
+            }
+        };
+
+        /**
+         * The max number of containers (taskCount) per task execution is 10 so if the taskCount is
+         * more than 10 the task definition will need to be run multiple times.
+         * @runTaskCount is the number of sets of 10 in the taskCount
+         * @remainingCount is the remaining count which is a number between 1 and 10
+         */
+        const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+        const runTaskCount = Math.ceil(taskCount/10 -1);
 
         for (let i = 0; i < runTaskCount; i++) {
-            params.count = 10; 
-            console.log('RUNNING TEST WITH 10'); 
-            await ecs.runTask(params).promise(); 
-            console.log('sleep 10 seconds to avoid ThrottlingException'); 
-            await sleep(10000); 
-        } 
+            params.count = 10;
+            console.log('RUNNING TEST WITH 10');
+            console.log(`Params ${JSON.stringify(params)}`);
+            await ecs.runTask(params).promise();
+            console.log('sleep 10 seconds to avoid ThrottlingException');
+            await sleep(10000);
+        }
 
         // run the final task definition with the remaining count. 
         let remainingCount = taskCount.toString().split('').pop(); 
