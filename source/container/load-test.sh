@@ -4,6 +4,9 @@ run_test() {
     echo "Download test scenario"
     aws s3 cp s3://$S3_BUCKET/test-scenarios/$TEST_ID.jmx test.jmx
 
+    echo "Download data files"
+    aws s3 cp s3://$S3_BUCKET/test-scenarios/ . --recursive --exclude "*" --include "$TEST_ID*.csv"
+
     echo "Running test"
     jmeter -n -t test.jmx -l test_out.jtl
 
@@ -19,7 +22,7 @@ run_test() {
 }
 
 run_report() {
-    
+
     echo "Download test results from s3://${S3_BUCKET}/results/${TEST_ID}_${TEST_RUN}"
     aws s3 sync s3://$S3_BUCKET/results/${TEST_ID}_$TEST_RUN .
     ls -al
@@ -44,13 +47,12 @@ UUID=$(cat /proc/sys/kernel/random/uuid)
 
 echo "S3_BUCKET:: ${S3_BUCKET}"
 echo "TEST_ID:: ${TEST_ID}"
-echo "TEST_RUN ${TEST_RUN}"
-echo "UUID ${UUID}"
+echo "TEST_RUN:: ${TEST_RUN}"
+echo "UUID:: ${UUID}"
 echo "RUN_REPORT:: ${RUN_REPORT}"
 echo "SQS_URL:: ${SQS_URL}"
 
 cd scripts
-
 
 if [[ "$RUN_REPORT" =~ "true" ]]
 then

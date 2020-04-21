@@ -1,16 +1,16 @@
 FROM node:12.14-alpine
 
 RUN apk add --update \
-    coreutils=8.31-r0 \
-    build-base=0.5-r1 \
-    sudo=1.8.31-r0 \
-    bash=5.0.11-r1 \
-    git=2.24.1-r0 \
-    unzip=6.0-r6 \
-    libffi-dev=3.2.1-r6 \
-    openssl-dev=1.1.1d-r3 \
-    python3=3.8.2-r0 \
-    python3-dev=3.8.2-r0 \
+    coreutils \
+    build-base \
+    sudo \
+    bash \
+    git \
+    unzip \
+    libffi-dev \
+    openssl-dev \
+    python3 \
+    python3-dev \
     py-pip
 
 RUN pip3 install --upgrade pip==20.0.2
