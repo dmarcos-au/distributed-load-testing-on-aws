@@ -24,7 +24,7 @@ import Dashboard from './Components/Dashboard/Dashboard.js';
 import Create from './Components/Create/Create.js';
 import Details from './Components/Details/Details.js';
 
-declare var awsConfig;
+import { awsConfig } from './aws_config.js';
 Amplify.configure(awsConfig);
 
 const loginTheme = {
