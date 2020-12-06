@@ -50,7 +50,7 @@ describe('#TASK RUNNER:: ', () => {
 		});
 
 		const response = await lambda.handler(event);
-		expect(response).toEqual({ scenario: event.scenario, prefix });
+		expect(response).toEqual({ scenario: event.scenario, prefix, "generateDashboard": true });
 	});
 
 	//Negative Tests

@@ -35,6 +35,7 @@ describe('task-status-cheker', () => {
     const response = await lambda.handler(event);
     expect(response).toEqual({
       scenario: event.scenario,
+      generateDashboard: false,
       isRunning: false
     });
   });
@@ -59,6 +60,7 @@ describe('task-status-cheker', () => {
     const response = await lambda.handler(event);
     expect(response).toEqual({
       scenario: event.scenario,
+      generateDashboard: false,
       isRunning: false
     });
   });
@@ -97,6 +99,7 @@ describe('task-status-cheker', () => {
     const response = await lambda.handler(event);
     expect(response).toEqual({
       scenario: event.scenario,
+      generateDashboard: false,
       isRunning: false
     });
   });
@@ -121,6 +124,7 @@ describe('task-status-cheker', () => {
     const response = await lambda.handler(event);
     expect(response).toEqual({
       scenario: event.scenario,
+      generateDashboard: false,
       isRunning: true
     });
   });
@@ -139,6 +143,7 @@ describe('task-status-cheker', () => {
     const response = await lambda.handler(event);
     expect(response).toEqual({
       scenario: event.scenario,
+      generateDashboard: false,
       isRunning: false,
       prefix: 'prefix'
     });
