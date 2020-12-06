@@ -17,9 +17,11 @@ exports.handler = async (event) => {
 
         // Get the latest test result from S3
         const resultList = await s3.listObjectsV2({ Bucket: bucket, Prefix: `results/${testId}/${prefix}`}).promise();
+        console.log(`resultList = ${JSON.stringify(resultList)}`);
         if (resultList.Contents) {
             const data = [];
             for (const content of resultList.Contents) {
+                console.log(`content = ${JSON.stringify(content)}`);
                 const parsedResult = await parser.results(content, testId);
                 let duration = parseInt(parsedResult.duration);
                 totalDuration += isNaN(duration) ? 0 : duration;
@@ -34,6 +36,7 @@ exports.handler = async (event) => {
             console.log('All Task Complete');
 
             //Parser final results and update dynamodb
+            console.log(`Final dataset = ${JSON.stringify(data)}`)
             await parser.finalResults(testId, data);
         }
         return 'success';

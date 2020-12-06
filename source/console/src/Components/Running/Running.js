@@ -5,7 +5,7 @@ import React from 'react';
 import { Row, Col } from 'reactstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
-declare var awsConfig;
+import { awsConfig } from '../../aws_config.js';
 
 class Running extends React.Component {
 

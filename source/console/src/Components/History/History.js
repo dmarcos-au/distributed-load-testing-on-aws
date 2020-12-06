@@ -56,4 +56,4 @@ class Results extends React.Component {
 
 }
 
-export default Results;
+export default  Results;

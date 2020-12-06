@@ -22,6 +22,7 @@ class Details extends React.Component {
             testId: props.location.state,
             data: {
                 testName: null,
+                testId: props.location.state,
                 testDescription: null,
                 testType: null,
                 results: {},
@@ -36,7 +37,8 @@ class Details extends React.Component {
                 testScenario: {
                     execution: [],
                     reporting: [],
-                    scenarios: {}
+                    scenarios: {},
+                    models: {}
                 }
             }
         }
@@ -162,6 +164,25 @@ class Details extends React.Component {
                 }],
                 scenarios: {
                     [data.testName]: {}
+                },
+                modules: {
+                    jmeter: {
+                        "csv-jtl-flags": {
+                            time: true,
+                            timestamp: true,
+                            latency: true,
+                            connectTime: true,
+                            success: true,
+                            label: true,
+                            code: true,
+                            message: true,
+                            threadName: true,
+                            saveAssertionResultsFailureMessage: true,
+                            bytes: true,
+                            threadCounts: true,
+                            sentBytes: true
+                        }
+                    }
                 }
             },
             testType: data.testType

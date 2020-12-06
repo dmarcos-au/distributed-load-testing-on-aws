@@ -10,7 +10,7 @@ exports.handler = async (event) => {
   console.log(JSON.stringify(event, null, 2));
 
   try {
-    const { scenario } = event;
+    const { scenario, generateDashboard = false } = event;
     let nextToken = null;
     let isRunning = false;
 
@@ -33,7 +33,7 @@ exports.handler = async (event) => {
       }
     } while (nextToken);
 
-    const result = { scenario, isRunning };
+    const result = { scenario, isRunning, generateDashboard };
     if (event.prefix) {
       result.prefix = event.prefix;
     }

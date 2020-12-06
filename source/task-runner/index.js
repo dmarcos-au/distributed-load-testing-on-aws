@@ -12,7 +12,8 @@ const dynamo = new AWS.DynamoDB.DocumentClient({
 exports.handler = async (event) => {
     console.log(JSON.stringify(event, null, 2));
 
-    const { scenario } = event;
+    const { scenario, generateDashboard } = event;
+    let { prefix } = event;
     const { testId, taskCount, testType } = scenario;
 
     try {
@@ -21,7 +22,9 @@ exports.handler = async (event) => {
          * Each tasks are going to create new result object in S3.
          * Prefix is going to be used to distinguish the current result S3 objects.
          */
-        const prefix = new Date().toISOString().replace('Z', '').split('').reverse().join('');
+        if (!prefix) { // don't generate a new prefix if we already have one
+            prefix = new Date().toISOString().replace('Z', '').split('').reverse().join('');
+        }
 
         // Run tasks in batches of 10
         const params = {
@@ -49,6 +52,10 @@ exports.handler = async (event) => {
                             value: process.env.SCENARIOS_BUCKET
                         },
                         {
+                            name: 'S3_BUCKET_CONSOLE',
+                            value: process.env.CONSOLE_BUCKET
+                        },
+                        {
                             name: 'TEST_ID',
                             value: testId
                         },
@@ -59,11 +66,16 @@ exports.handler = async (event) => {
                         {
                             name: 'PREFIX',
                             value: prefix
+                        },
+                        {
+                            name: 'RUN_REPORT',
+                            value: String(generateDashboard)
                         }
                     ]
                 }]
             }
         };
+        console.log(`ECS params: ${JSON.stringify(params)}`)
 
         /**
          * The max number of containers (taskCount) per task execution is 10 so if the taskCount is
@@ -71,7 +83,7 @@ exports.handler = async (event) => {
          * @runTaskCount is the number of sets of 10 in the taskCount
          */
         const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-        let runTaskCount = taskCount;
+        let runTaskCount = generateDashboard ? 1 : taskCount; // only need one task to generate dashboard
         params.count = 10;
         while (runTaskCount >= 10) {
             console.log('RUNNING TEST WITH 10');
@@ -89,7 +101,7 @@ exports.handler = async (event) => {
         }
 
         console.log('success');
-        return { scenario, prefix };
+        return { scenario, prefix, generateDashboard: true };
     } catch (err) {
         console.error(err);
         // Update DynamoDB with Status FAILED and Error Message

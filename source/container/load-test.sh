@@ -45,3 +45,4 @@ fi
 
 echo "Uploading results"
 aws s3 cp /tmp/artifacts/results.xml s3://$S3_BUCKET/results/${TEST_ID}/${PREFIX}-${UUID}.xml
+aws s3 cp /tmp/artifacts/kpi.jtl s3://$S3_BUCKET/results/${TEST_ID}/report-${PREFIX}-${UUID}.jtl

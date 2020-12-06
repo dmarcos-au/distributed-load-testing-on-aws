@@ -126,6 +126,25 @@ class Create extends React.Component {
                 }],
                 scenarios: {
                     [values.testName]: {}
+                },
+                modules: {
+                    jmeter: {
+                        "csv-jtl-flags": {
+                            time: true,
+                            timestamp: true,
+                            latency: true,
+                            connectTime: true,
+                            success: true,
+                            label: true,
+                            code: true,
+                            message: true,
+                            threadName: true,
+                            saveAssertionResultsFailureMessage: true,
+                            bytes: true,
+                            threadCounts: true,
+                            sentBytes: true
+                        }
+                    }
                 }
             },
             testType: values.testType

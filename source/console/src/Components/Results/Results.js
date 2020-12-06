@@ -5,6 +5,7 @@ import React from 'react';
 import { Row, Col, Button, Popover, PopoverHeader, PopoverBody } from 'reactstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faInfoCircle } from '@fortawesome/free-solid-svg-icons';
+import {Link} from "react-router-dom";
 
 class Results extends React.Component {
     constructor(props) {
@@ -41,6 +42,7 @@ class Results extends React.Component {
                 <div className="box">
                     <h2>Test Results</h2>
                     <Button id="info" color="link"><FontAwesomeIcon id="icon" icon={faInfoCircle} /> Info</Button>
+                    <h3><a href={`/dashboard/${this.props.data.testId}/index.html`}>Dashboard</a></h3>
                     <Row>
                         <Col sm="3">
                             <div className="result">

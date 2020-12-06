@@ -1003,6 +1003,7 @@ Resources:
       Timeout: 180
       Environment:
         Variables:
+          CONSOLE_BUCKET: !Ref ConsoleBucket
           SCENARIOS_BUCKET: !Ref ScenariosBucket
           SCENARIOS_TABLE: !Ref ScenariosTable
           TASK_CLUSTER: !Ref EcsCluster
