@@ -24,8 +24,8 @@ import 'brace/theme/github';
 // Upload file size limit
 const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
 
-// Allowed file extentions
-const FILE_EXTENSIONS = ['jmx'];
+// Allowed file extensions
+const FILE_EXTENSIONS = ['jmx', 'zip'];
 
 class Create extends React.Component {
 
