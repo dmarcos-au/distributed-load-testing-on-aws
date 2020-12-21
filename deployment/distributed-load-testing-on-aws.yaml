@@ -137,7 +137,8 @@ Resources:
             Resource:
               - !Sub ${ScenariosBucket.Arn}
               - !Sub ${ScenariosBucket.Arn}/*
-
+              - !Sub ${ConsoleBucket.Arn}
+              - !Sub ${ConsoleBucket.Arn}/*
   DynamoDbPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -1460,11 +1461,56 @@ Resources:
                 {
                   "Variable": "$.isRunning",
                   "BooleanEquals": false,
-                  "Next": "Parse result"
+                  "Next": "Is Test Type JMeter?"
                 }
               ],
               "Default": "Wait 1 minute"
             },
+            "Is Test Type JMeter?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.scenario.testType",
+                  "StringMatches": "jmeter",
+                  "Next": "Run Dashboard Report"
+                }
+              ],
+              "Default": "Parse result"
+            },
+            "Run Dashboard Report": {
+              "Type": "Task",
+              "Resource": "${TaskRunner.Arn}",
+              "Next": "Wait 30 seconds For Dashboard Report"
+            },
+
+
+
+            "Wait 30 seconds For Dashboard Report": {
+              "Comment": "Wait 1 minute",
+              "Type": "Wait",
+              "Seconds": 30,
+              "Next": "Check dashboard report status"
+            },
+            "Check dashboard report status": {
+              "Type": "Task",
+              "Resource": "${TaskStatusChecker.Arn}",
+              "InputPath": "$",
+              "OutputPath": "$",
+              "Next": "Dashboard done?"
+            },
+            "Dashboard done?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.isRunning",
+                  "BooleanEquals": false,
+                  "Next": "Parse result"
+                }
+              ],
+              "Default": "Wait 30 seconds For Dashboard Report"
+            },
+
+
             "Parse result": {
               "Type": "Task",
               "Resource": "${ResultsParser.Arn}",
