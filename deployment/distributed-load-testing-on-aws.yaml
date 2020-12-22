@@ -578,7 +578,7 @@ Resources:
   EcsTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Cpu: '512'
+      Cpu: '1024'
       ExecutionRoleArn: !GetAtt EcsTaskExecutionRole.Arn
       Memory: '2048'
       NetworkMode: awsvpc
