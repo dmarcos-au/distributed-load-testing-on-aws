@@ -96,6 +96,20 @@ aws s3 cp ./global-s3-assets/ s3://$DIST_OUTPUT_BUCKET-$REGION/$SOLUTION_NAME/$V
 * Get the link of the `distributed-load-testing-on-aws.template` uploaded to your Amazon S3 bucket.
 * Deploy the Distributed Load Testing on AWS solution to your account by launching a new AWS CloudFormation stack using the link of the `distributed-load-testing-on-aws.template`.
 
+## Debugging
+
+To debug locally on IntelliJ
+
+* setup `aws_config.js` file. Create a file in `source/console/src/aws_config.js`. Get the values from the bucket 
+`s3://bff-distributed-load-test-consolebucket-xxxxx/console/assets/aws_config.js`
+* Update the following files to use this config file:
+  - `source/console/src/App.js`
+  - `source/console/src/Components/Results/Results.js`
+* Create a run config and start:
+![Run Config](assets/Run_Config.png)
+* In the console in IntelliJ, press Command + Shift while clicking on the localhost link. this should open the page in Chrome:
+![Run Console](assets/Run_Console.png)
+
 ***
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.<br />
