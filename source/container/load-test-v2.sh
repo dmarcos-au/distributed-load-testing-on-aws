@@ -21,6 +21,9 @@ run_test() {
     # if a zip has been uploaded that contains the jmeter test and test data
     aws s3 cp s3://$S3_BUCKET/public/test-scenarios/$TEST_TYPE/$TEST_ID.zip ./
     unzip $TEST_ID.zip
+    # rename jmeter script to what bzt expects
+    echo "renaming jmeter scripts: mv *.jmx $TEST_ID.jmx"
+    mv *.jmx $TEST_ID.jmx
   fi
 
   echo "Running test"
