@@ -182,7 +182,7 @@ class Create extends React.Component {
             if (this.state.file) {
                 try {
                     const file = this.state.file;
-                    await Storage.put(`test-scenarios/jmeter/${testId}.jmx`, file);
+                    await Storage.put(`test-scenarios/jmeter/${testId}.${this.state.extension}`, file);
                     console.log('Script uploaded successfully');
                 } catch (error) {
                     console.error('Error', error);
@@ -243,7 +243,8 @@ class Create extends React.Component {
 
             this.setState({
                 file,
-                validFile: true
+                validFile: true,
+                extension
             });
         } else {
             this.setState({

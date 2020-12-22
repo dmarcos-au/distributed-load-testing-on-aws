@@ -5,7 +5,6 @@ import React from 'react';
 import { Row, Col, Button, Popover, PopoverHeader, PopoverBody } from 'reactstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faInfoCircle } from '@fortawesome/free-solid-svg-icons';
-import {Link} from "react-router-dom";
 
 class Results extends React.Component {
     constructor(props) {
