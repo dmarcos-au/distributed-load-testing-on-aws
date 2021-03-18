@@ -62,6 +62,9 @@ run_report() {
     aws s3 sync s3://$S3_BUCKET/results/${TEST_ID} .
     ls -al
 
+    echo "setting report granularity to 1 second"
+    echo "jmeter.reportgenerator.overall_granularity=1000" >> ~/.bzt/jmeter-taurus/5.2.1/bin/user.properties
+
     echo "combining reports"
     echo "timeStamp,elapsed,label,responseCode,responseMessage,threadName,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,Latency,Hostname,Connect" > logs.xjtl
     tail -n +2 -q *.jtl >> logs.xjtl
