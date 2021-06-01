@@ -1,17 +1,15 @@
 {
-  "name": "task-runner",
+  "name": "ecr-checker",
   "version": "1.3.0",
   "engines": {
     "node": "^12.x"
   },
-  "description": "Triggered by Step Functions, runs ecs task Definitions",
+  "description": "checks if ECR is ready or not",
   "main": "index.js",
   "scripts": {
     "test": "jest lib/*.spec.js --coverage --silent"
   },
-  "dependencies": {
-    "false": "^0.0.4"
-  },
+  "dependencies": {},
   "devDependencies": {
     "aws-sdk": "2.804.0",
     "jest": "26.6.3"

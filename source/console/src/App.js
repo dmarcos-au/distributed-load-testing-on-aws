@@ -4,7 +4,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Switch, Link } from "react-router-dom";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faAws } from '@fortawesome/free-brands-svg-icons';
 import { faPlusSquare, faSignOutAlt, faBars, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
 import {
   Collapse,
@@ -17,7 +16,7 @@ import {
 
 //Amplify
 import Amplify, { Auth } from 'aws-amplify';
-import { withAuthenticator, AmplifyTheme } from 'aws-amplify-react';
+import { withAuthenticator } from '@aws-amplify/ui-react';
 
 //Components
 import Dashboard from './Components/Dashboard/Dashboard.js';
@@ -28,13 +27,6 @@ import Details from './Components/Details/Details.js';
 //import { awsConfig } from './aws_config.js';
 declare var awsConfig;
 Amplify.configure(awsConfig);
-
-const loginTheme = {
-  sectionFooterSecondaryContent:{
-    ...AmplifyTheme.sectionFooterSecondaryContent,
-    display:"none"
-  }
-};
 
 class App extends React.Component {
 
@@ -74,7 +66,7 @@ class App extends React.Component {
       <div>
         <Router>
           <Navbar color="dark" dark fixed="top" expand="md">
-            <NavbarBrand href="/"> <FontAwesomeIcon icon={faAws} size="lg" color="#FF9900" id="logo" /> Distributed Load Testing</NavbarBrand>
+            <NavbarBrand href="/">Distributed Load Testing</NavbarBrand>
             <NavbarToggler onClick={this.toggleNavbar} className="mr-2" />
             <Collapse isOpen={!this.state.collapsed} navbar>
             <Nav className="mr-auto" navbar>
@@ -90,11 +82,11 @@ class App extends React.Component {
                     }}
                     className="nav-link"
                     id="createTest"
-              >
-                <FontAwesomeIcon id="icon" icon={faPlusSquare} /> Create Test
-              </Link>
-            </NavItem>
-            </Nav>
+                  >
+                    <FontAwesomeIcon id="icon" icon={faPlusSquare} /> Create Test
+                  </Link>
+                </NavItem>
+              </Nav>
               <Nav className="ml-auto" navbar>
                 <NavItem>
                   <Link to="" onClick={this.signOut} className="nav-link" id="signOut">
@@ -102,7 +94,7 @@ class App extends React.Component {
                   </Link>
                 </NavItem>
               </Nav>
-              </Collapse>
+            </Collapse>
           </Navbar>
 
           <div className="main">
@@ -110,7 +102,7 @@ class App extends React.Component {
               <Route path="/" exact component={Dashboard} />
               <Route path="/dashboard" exact component={Dashboard} />
               <Route path="/create/" component={Create} />
-              <Route path="/details/" component={Details} />
+              <Route path="/details/:testId?" component={Details} />
               <Route component={this.noMatch} />
             </Switch>
             <div className="footer">
@@ -119,14 +111,13 @@ class App extends React.Component {
                  rel="noopener noreferrer">
                   solution home page <FontAwesomeIcon size="sm" icon={faExternalLinkAlt}/>
               </a></p>
-          </div>
+            </div>
           </div>
         </Router>
-
       </div>
     )
   }
 }
 
-//export default App;
-export default withAuthenticator(App, false, [], null, loginTheme);
+
+export default withAuthenticator(App, false);
