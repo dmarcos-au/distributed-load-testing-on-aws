@@ -5,19 +5,15 @@ import React from 'react';
 import { Row, Col } from 'reactstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
-
-// for local dev builds, uncomment below
-//import { awsConfig } from '../../aws_config.js';
 declare var awsConfig;
 
 class Running extends React.Component {
 
     render() {
-        console.log(this.props.data.tasks)
-
         let provisioning = 0;
         let pending = 0;
         let running = 0;
+        let ETA = 0;
 
         for (let task in this.props.data.tasks) {
                // eslint-disable-next-line default-case
@@ -33,6 +29,10 @@ class Running extends React.Component {
                     break;
             }
         }
+        //10 seconds to launch every 10 (or 1 second per task) + 2 minutes to enter running state
+        let workerLaunchTime = this.props.data.taskCount / 60 + 2;
+        //another minute to launch leader (may have to wait in step functions) + 2 minutes to enter running state, rounded up
+        ETA = Math.ceil(workerLaunchTime  + 3);
 
         return (
             <div>
@@ -71,17 +71,17 @@ class Running extends React.Component {
                     </Row>
                 </div>
                 <div className="box">
-                <h3>Realtime Avg Response Times</h3>
+                <h3>Realtime Metrics</h3>
                     <p className="console">
-                    The realtime Average response times can be monitored using the <a className="text-link"
-                        href={ awsConfig.cw_dashboard}
+                    The realtime average response time, number of users, success counts, and error counts can be monitored using the <a className="text-link"
+                        href={ awsConfig.cw_dashboard + `EcsLoadTesting-${this.props.testId}`}
                         target="_blank"
                         rel="noopener noreferrer">
                         Amazon CloudWatch Metrics Dashboard <FontAwesomeIcon size="sm" icon={faExternalLinkAlt}/>
                         </a>
                     </p>
                     <p className="note"> Response times will start to populate once the tasks are running, task are launched in batches of 10
-                        and it can take 1-2 minutes for all tasks to be running.</p>
+                        and it can take up to {ETA} minutes for all tasks to be running.</p>
                 </div>
             </div>
         )

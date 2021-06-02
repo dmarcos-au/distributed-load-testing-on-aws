@@ -1,3 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 Description: "(SO0062) - Distributed Load Testing on AWS is a reference architecture to perform application load testing at scale. Version CODE_VERSION"
 
 Parameters:
@@ -50,48 +53,60 @@ Parameters:
     AllowedPattern: "(?:^$|(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2}))"
     ConstraintDescription: "must be a valid IP CIDR range of the form x.x.x.x/x."
 
+  DockerHubSecret:
+    Type: String
+    Description: Name of Secrets Manager Secret containing Docker Hub credentials
+  
 Metadata:
-    AWS::CloudFormation::Interface:
-      ParameterGroups:
-          -
-            Label:
-                default: "Console Access"
-            Parameters:
-                - AdminName
-                - AdminEmail
-          -
-            Label:
-                default: "AWS Fargate VPC Settings"
-            Parameters:
-                - VpcCidrBlock
-                - SubnetACidrBlock
-                - SubnetBCidrBlock
-                - EgressCidr
-      ParameterLabels:
-        AdminName:
-          default: "Console Administrator Name"
-        AdminEmail:
-          default: "Console Administrator Email"
-        VpcCidrBlock:
-          default: "AWS Fargate VPC CIDR Block"
-        SubnetACidrBlock:
-          default: "AWS Fargate Subnet A CIDR Block"
-        SubnetBCidrBlock:
-          default: "AWS Fargate Subnet B CIDR Block"
-        EgressCidr:
-          default: "AWS Fargate SecurityGroup CIDR Block"
-
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Console Access"
+        Parameters:
+          - AdminName
+          - AdminEmail
+      - Label:
+          default: "AWS Fargate VPC Settings"
+        Parameters:
+          - VpcCidrBlock
+          - SubnetACidrBlock
+          - SubnetBCidrBlock
+          - EgressCidr
+      - Label: 
+          default: "Secrets Manager Secret"
+        Parameters:
+          - DockerHubSecret
+    ParameterLabels:
+      AdminName:
+        default: "Console Administrator Name"
+      AdminEmail:
+        default: "Console Administrator Email"
+      VpcCidrBlock:
+        default: "AWS Fargate VPC CIDR Block"
+      SubnetACidrBlock:
+        default: "AWS Fargate Subnet A CIDR Block"
+      SubnetBCidrBlock:
+        default: "AWS Fargate Subnet B CIDR Block"
+      EgressCidr:
+        default: "AWS Fargate SecurityGroup CIDR Block"
+      DockerHubSecret:
+        default: "Docker Hub credentials Secret"
 Mappings:
-  SourceCode:
-    General:
+  Solution:
+    Config:
       S3Bucket: CODE_BUCKET
       KeyPrefix: SOLUTION_NAME/CODE_VERSION
-  AnonymousData:
-    SendAnonymousData:
-      Data: "Yes"
-
+      SendAnonymousData: "Yes"
+      URL: https://metrics.awssolutionsbuilder.com/generic
+      SolutionId: "SO0062"
+      CodeVersion: CODE_VERSION
+  CodeBuildSecretsManager:
+    dockerhub:
+      login: "- docker login --username $secretUsername --password $secretPassword"
 Conditions:
-  Metrics: !Equals [ !FindInMap [AnonymousData, SendAnonymousData, Data], "Yes" ]
+  Metrics: !Equals [ !FindInMap [Solution, Config, SendAnonymousData], "Yes" ]
+  SecretProvided: !Not [!Equals [!Ref DockerHubSecret, ""]]
+
 
 Resources:
 
@@ -106,6 +121,11 @@ Resources:
         - !Ref EcsTaskExecutionRole
         - !Ref ContainerCodeBuildRole
         - !Ref ContainerCodePipelineRole
+        - !Ref LambdaEcrCheckerRole
+        - !Ref LambdaTaskStatusRole
+        - !Ref LambdaCustomRole
+        - !Ref LambdaTaskRole
+        - !Ref LambdaTaskCancelerRole
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -139,6 +159,7 @@ Resources:
               - !Sub ${ScenariosBucket.Arn}/*
               - !Sub ${ConsoleBucket.Arn}
               - !Sub ${ConsoleBucket.Arn}/*
+
   DynamoDbPolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -147,6 +168,8 @@ Resources:
         - !Ref LambdaApiRole
         - !Ref LambdaResultsRole
         - !Ref LambdaTaskRole
+        - !Ref LambdaEcrCheckerRole
+        - !Ref LambdaTaskStatusRole
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -155,11 +178,66 @@ Resources:
               - dynamodb:DeleteItem
               - dynamodb:GetItem
               - dynamodb:PutItem
-              - dynamodb:Query
               - dynamodb:Scan
               - dynamodb:UpdateItem
             Resource:
               - !Sub ${ScenariosTable.Arn}
+
+  LambdaApiPermissionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-lambdaapi-permission-policy
+      Roles:
+        - !Ref LambdaApiRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 
+              - lambda:AddPermission
+              - lambda:RemovePermission
+            Resource: 
+              - !GetAtt ApiServices.Arn
+
+  LambdaApiEventsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-lambdaapi-events-policy
+      Roles:
+        - !Ref LambdaApiRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 
+              - events:PutTargets
+              - events:PutRule
+              - events:DeleteRule
+              - events:RemoveTargets
+            Resource: 
+              - !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*Scheduled"
+              - !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*Create"
+          - Effect: Allow
+            Action: 
+              - events:ListRules
+            Resource: 
+              - !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*"
+  
+  TaskCancelerInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-lambda-TaskCanceler-invoke-policy
+      Roles:
+        - !Ref LambdaApiRole
+        - !Ref LambdaTaskStatusRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 
+              - lambda:InvokeFunction
+            Resource: 
+              - !GetAtt TaskCanceler.Arn
 
   LambdaApiRole:
     Type: AWS::IAM::Role
@@ -185,7 +263,6 @@ Resources:
               - Effect: Allow
                 Action:
                   - ecs:RunTask
-                  - ecs:StopTask
                   - ecs:DescribeTasks
                 Resource:
                   - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/*
@@ -201,12 +278,15 @@ Resources:
                 Resource:
                   - !Ref TaskRunnerStepFunctions
               - Effect: Allow
+                Action: 
+                  - logs:DeleteMetricFilter
+                Resource: 
+                  - !GetAtt EcsCloudWatchLogGroup.Arn
+              - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
+                  - cloudwatch:DeleteDashboards
                 Resource:
-                  !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/*
+                  - !Sub arn:${AWS::Partition}:cloudwatch::${AWS::AccountId}:dashboard/EcsLoadTesting*
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -219,39 +299,86 @@ Resources:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
-          -
-            Effect: Allow
+          - Effect: Allow
             Principal:
               Service:
                 - lambda.amazonaws.com
             Action:
               - sts:AssumeRole
       Policies:
-        -
-          PolicyName: !Sub ${AWS::StackName}-task-lambda-policy
+        - PolicyName: !Sub ${AWS::StackName}-task-lambda-policy
           PolicyDocument:
             Statement:
-              -
-                Effect: Allow
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                Resource:
+                  - "*"
+              - Effect: Allow
                 Action:
                   - ecs:RunTask
+                  - ecs:DescribeTasks
                 Resource:
                   - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/*
                   - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/*:*
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - iam:PassRole
                 Resource:
                   - !Sub ${EcsTaskExecutionRole.Arn}
-              -
-                Effect: Allow
+              - Effect: Allow
+                Action: 
+                  - logs:PutMetricFilter
+                Resource: 
+                  - !GetAtt EcsCloudWatchLogGroup.Arn
+              - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
+                  - cloudwatch:PutDashboard
                 Resource:
-                  !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/*
+                  - !Sub arn:${AWS::Partition}:cloudwatch::${AWS::AccountId}:dashboard/EcsLoadTesting*
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: ecs:listTasks does not support resource level permissions.
+
+  LambdaTaskCancelerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-task-canceler-lambda-policy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                Resource:
+                  - "*"
+              - Effect: Allow
+                Action:
+                  - ecs:StopTask
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/*
+                  - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/*:*
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub ${ScenariosTable.Arn}
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: ecs:listTasks does not support resource level permissions.
 
   LambdaTaskStatusRole:
     Type: AWS::IAM::Role
@@ -266,8 +393,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        -
-          PolicyName: !Sub ${AWS::StackName}-task-status-lambda-policy
+        - PolicyName: !Sub ${AWS::StackName}-task-status-lambda-policy
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -280,18 +406,39 @@ Resources:
                   - ecs:DescribeTasks
                 Resource:
                   - !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/*
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource:
-                  !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/*
     Metadata:
       cfn_nag:
         rules_to_suppress:
           - id: W11
             reason: ecs:ListTasks cannot specify resource level.
+
+  LambdaEcrCheckerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-ecr-checker-policy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:DescribeImages
+                Resource:
+                  - !GetAtt EcrRepository.Arn
+              - Effect: Allow
+                Action:
+                  - codebuild:ListBuildsForProject
+                  - codebuild:BatchGetBuilds
+                Resource:
+                  - !GetAtt ContainerCodeBuild.Arn
 
   LambdaResultsRole:
     Type: AWS::IAM::Role
@@ -325,41 +472,29 @@ Resources:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
-          -
-            Effect: Allow
+          - Effect: Allow
             Principal:
               Service:
                 - lambda.amazonaws.com
             Action:
               - sts:AssumeRole
       Policies:
-        -
-          PolicyName: !Sub ${AWS::StackName}-custom-resource-policy
+        - PolicyName: !Sub ${AWS::StackName}-custom-resource-policy
           PolicyDocument:
             Statement:
-              -
-                Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource:
-                  !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/*
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - s3:PutObject
                 Resource:
                   - !Sub ${ContainerBucket.Arn}/*
                   - !Sub ${ConsoleBucket.Arn}/*
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - s3:GetObject
                 Resource:
                   - !Sub
                     - arn:${AWS::Partition}:s3:::${Bucket}-${AWS::Region}/*
-                    - Bucket: !FindInMap ["SourceCode", "General", "S3Bucket"]
+                    - Bucket: !FindInMap ["Solution", "Config", "S3Bucket"]
 
   EcsTaskExecutionRole:
     Type: AWS::IAM::Role
@@ -385,12 +520,10 @@ Resources:
             Principal:
               Service: codebuild.amazonaws.com
       Policies:
-        -
-          PolicyName: !Sub ${AWS::StackName}-code-build-policy
+        - PolicyName: !Sub ${AWS::StackName}-code-build-policy
           PolicyDocument:
             Statement:
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - ecr:DescribeImages
                   - ecr:PutImage
@@ -403,13 +536,11 @@ Resources:
                   - ecr:GetRepositoryPolicy
                 Resource:
                   - !Sub ${EcrRepository.Arn}
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - ecr:GetAuthorizationToken
                 Resource: "*"
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - s3:GetObject
                   - s3:GetObjectVersion
@@ -420,6 +551,13 @@ Resources:
                 Resource:
                     - !Sub ${ContainerBucket.Arn}
                     - !Sub ${ContainerBucket.Arn}/*
+              - !If
+                - SecretProvided
+                - Effect: Allow
+                  Action: 
+                    - secretsmanager:GetSecretValue
+                  Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${DockerHubSecret}*
+                - !Ref AWS::NoValue
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -439,12 +577,10 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        -
-          PolicyName: !Sub ${AWS::StackName}-code-pipeline-policy
+        - PolicyName: !Sub ${AWS::StackName}-code-pipeline-policy
           PolicyDocument:
             Statement:
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - s3:GetObject
                   - s3:GetObjectVersion
@@ -454,8 +590,7 @@ Resources:
                 Resource:
                   - !Sub ${ContainerBucket.Arn}
                   - !Sub ${ContainerBucket.Arn}/*
-              -
-                Effect: Allow
+              - Effect: Allow
                 Action:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
@@ -480,7 +615,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -493,8 +628,8 @@ Resources:
       CidrBlock: !Ref SubnetACidrBlock
       AvailabilityZone:
         !Select
-            - 0
-            - !GetAZs
+          - 0
+          - !GetAZs
       VpcId: !Ref Vpc
 
   PublicSubnetB:
@@ -503,8 +638,8 @@ Resources:
       CidrBlock: !Ref SubnetBCidrBlock
       AvailabilityZone:
         !Select
-            - 0
-            - !GetAZs
+          - 0
+          - !GetAZs
       VpcId: !Ref Vpc
 
   InternetGateway:
@@ -544,9 +679,18 @@ Resources:
 
 ## ECS Resources
   EcrRepository:
-    # stack delte will fail as the repo is not empty.
+    # stack delete will fail as the repo is not empty.
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: AWS::ECR::Repository
+    Properties:
+      ImageScanningConfiguration: 
+        ScanOnPush: "true"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W79
+            reason: "Already contains ScanOnPush, attribute was recently changed from scanOnPush to ScanOnPush causing warning"
 
   EcsCluster:
     Type: AWS::ECS::Cluster
@@ -557,7 +701,17 @@ Resources:
           Value: enabled
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
+
+  EcsSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties: 
+      Description: "Allow tasks to communicate"
+      FromPort: 50000
+      IpProtocol: tcp
+      GroupId: !Ref EcsSecurityGroup
+      SourceSecurityGroupId: !Ref EcsSecurityGroup
+      ToPort: 50000
 
   EcsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -578,19 +732,18 @@ Resources:
   EcsTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Cpu: '1024'
+      Cpu: '2048'
       ExecutionRoleArn: !GetAtt EcsTaskExecutionRole.Arn
-      Memory: '2048'
+      Memory: '4096'
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
       TaskRoleArn: !GetAtt EcsTaskExecutionRole.Arn
       ContainerDefinitions:
-        -
-          Essential: true
+        - Essential: true
           Name: !Sub ${AWS::StackName}-load-tester
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:latest
-          Memory: 2048
+          Memory: 4096
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -602,26 +755,16 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       RetentionInDays: 365
-
-  EcsAvgResponseTime:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      FilterPattern: "[time, logType=INFO*, logTitle=Current*, numVu, vu, numSucc, succ, numFail, fail, avgRt, x]"
-      LogGroupName: !Ref EcsCloudWatchLogGroup
-      MetricTransformations:
-        -
-          MetricValue: "$avgRt"
-          MetricNamespace: "distribuited-load-testing"
-          MetricName: "Avg Response Time"
-
-  EcsLoadTesting:
-    Type: AWS::CloudWatch::Dashboard
-    Properties:
-      DashboardBody: !Sub '{"widgets":[{"type":"metric","x":0,"y":0,"width":8,"height":8,"properties":{"metrics":[["distribuited-load-testing","Avg Response Time"]],"view":"timeSeries","stacked":true,"region":"${AWS::Region}","stat":"Average"}}]}'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: KMS encryption unnecessary for log group.
 
 ## Storage
   ScenariosBucket:
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: AWS::S3::Bucket
     Properties:
       LoggingConfiguration:
@@ -646,9 +789,11 @@ Resources:
               - !Sub https://${ConsoleCloudFront.DomainName}
             AllowedHeaders:
               - '*'
+            ExposedHeaders:
+              - 'ETag'
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
 
   ScenariosBucketPolicy:
    Type: AWS::S3::BucketPolicy
@@ -669,6 +814,7 @@ Resources:
 
   ContainerBucket:
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: AWS::S3::Bucket
     Properties:
       VersioningConfiguration:
@@ -687,7 +833,7 @@ Resources:
         RestrictPublicBuckets: true
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -696,6 +842,7 @@ Resources:
 
   LogsBucket:
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Type: AWS::S3::Bucket
     Properties:
       AccessControl: LogDeliveryWrite
@@ -710,7 +857,7 @@ Resources:
         RestrictPublicBuckets: true
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -722,6 +869,7 @@ Resources:
   ConsoleBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       WebsiteConfiguration:
         IndexDocument: index.html
@@ -740,7 +888,7 @@ Resources:
               SSEAlgorithm: AES256
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
 
   ScenariosTable:
     Type: AWS::DynamoDB::Table
@@ -751,25 +899,29 @@ Resources:
       KeySchema:
         - AttributeName: testId
           KeyType: HASH
-      BillingMode: "PAY_PER_REQUEST"
+      BillingMode: PAY_PER_REQUEST
       SSESpecification:
         SSEEnabled: True
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W78
+            reason: The table does not require PITR.
 
 ## CloudFront
   ConsoleBucketPolicy:
-    Type: 'AWS::S3::BucketPolicy'
+    Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref ConsoleBucket
       PolicyDocument:
         Statement:
-          -
-            Effect: Allow
+          - Effect: Allow
             Principal:
               CanonicalUser: !GetAtt ConsoleOriginAccessIdentity.S3CanonicalUserId
-            Action: 's3:GetObject'
+            Action: s3:GetObject
             Resource: !Sub ${ConsoleBucket.Arn}/*
 
   ConsoleOriginAccessIdentity:
@@ -788,8 +940,7 @@ Resources:
           Bucket: !GetAtt LogsBucket.DomainName
           Prefix: cloudfront-logs/
         Origins:
-            -
-              Id: console
+            - Id: console
               DomainName: !Sub "${ConsoleBucket}.s3.${AWS::Region}.amazonaws.com"
               OriginPath: /console
               S3OriginConfig:
@@ -826,7 +977,7 @@ Resources:
         HttpVersion: 'http2'
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
     Metadata:
       cfn_nag:
         rules_to_suppress:
@@ -849,29 +1000,46 @@ Resources:
         Image: aws/codebuild/standard:4.0
         PrivilegedMode: True
         EnvironmentVariables:
-          -
-            Name: REPOSITORY
+          - Name: REPOSITORY
             Value: !Sub ${EcrRepository}
-          -
-            Name: REPOSITORY_URI
+          - Name: REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}
+          - !If
+            - SecretProvided
+            - Name: "secretUsername"
+              Value: !Sub ${DockerHubSecret}:username
+              Type: SECRETS_MANAGER
+            - !Ref AWS::NoValue
+          - !If
+            - SecretProvided
+            - Name: "secretPassword"
+              Value: !Sub ${DockerHubSecret}:password
+              Type: SECRETS_MANAGER
+            - !Ref AWS::NoValue
       Source:
         Type: CODEPIPELINE
-        BuildSpec: !Sub |
-          version: 0.2
-          phases:
-              pre_build:
-                commands:
-                  - echo $REPOSITORY
-                  - echo $REPOSITORY_URI
-                  - $(aws ecr get-login --region ${AWS::Region} --no-include-email)
-              build:
-                commands:
-                  - docker build -t $REPOSITORY:latest .
-                  - docker tag $REPOSITORY:latest $REPOSITORY_URI:latest
-              post_build:
-                commands:
-                  - docker push $REPOSITORY_URI:latest
+        BuildSpec: !Sub 
+          - |
+            version: 0.2
+            phases:
+                pre_build:
+                  commands:
+                    - aws --version
+                    - echo $REPOSITORY
+                    - echo $REPOSITORY_URI
+                    - aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin $REPOSITORY_URI
+                    ${DockerHubLogin}
+                build:
+                  commands:
+                    - docker build -t $REPOSITORY:latest .
+                    - docker tag $REPOSITORY:latest $REPOSITORY_URI:latest
+                post_build:
+                  commands:
+                    - docker push $REPOSITORY_URI:latest
+          - { DockerHubLogin: !If [ SecretProvided, !FindInMap [CodeBuildSecretsManager, dockerhub, login], "" ] }
+      Tags:
+        - Key: SolutionId
+          Value: !FindInMap [Solution, Config, SolutionId]
 
   ContainerCodePipeline:
     #wait for the container
@@ -883,11 +1051,9 @@ Resources:
         Type: S3
         Location: !Ref ContainerBucket
       Stages:
-        -
-          Name: Source
+        - Name: Source
           Actions:
-            -
-              Name: Source
+            - Name: Source
               ActionTypeId:
                 Category: Source
                 Provider: S3
@@ -898,11 +1064,9 @@ Resources:
               Configuration:
                 S3Bucket: !Ref ContainerBucket
                 S3ObjectKey: container.zip
-        -
-          Name: Build
+        - Name: Build
           Actions:
-            -
-              Name: Build
+            - Name: Build
               ActionTypeId:
                 Category: Build
                 Owner: AWS
@@ -915,6 +1079,9 @@ Resources:
               Configuration:
                 ProjectName:
                   !Ref ContainerCodeBuild
+      Tags:
+        - Key: SolutionId
+          Value: !FindInMap [Solution, Config, SolutionId]
 
 ## Lambda
   CustomResource:
@@ -925,13 +1092,27 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaCustomRole.Arn
       Code:
-        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "custom-resource.zip"]]
+        S3Bucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["Solution", "Config", "KeyPrefix"],  "custom-resource.zip"]]
       Runtime: nodejs12.x
       Timeout: 120
+      Environment:
+        Variables:
+          METRIC_URL: !FindInMap [Solution, Config, URL]
+          SOLUTION_ID: !FindInMap [Solution, Config, SolutionId]
+          VERSION: !FindInMap [Solution, Config, CodeVersion]
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: CloudWatchLogsPolicy covers a permission to write CloudWatch logs.
+          - id: W89
+            reason: VPC not needed for lambda
+          - id: W92
+            reason: Does not run concurrent executions
 
   ApiServices:
     Type: AWS::Lambda::Function
@@ -940,8 +1121,8 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaApiRole.Arn
       Code:
-        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "api-services.zip"]]
+        S3Bucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["Solution", "Config", "KeyPrefix"],  "api-services.zip"]]
       Runtime: nodejs12.x
       Timeout: 120
       Environment:
@@ -949,18 +1130,26 @@ Resources:
           SCENARIOS_BUCKET: !Ref ScenariosBucket
           SCENARIOS_TABLE: !Ref ScenariosTable
           TASK_CLUSTER: !Ref EcsCluster
-          TASK_DEFINITION: !Ref EcsTaskDefinition
-          TASK_SECURITY_GROUP: !Ref EcsSecurityGroup
-          TASK_IMAGE: !Sub ${AWS::StackName}-load-tester
-          SUBNET_A: !Ref PublicSubnetA
-          SUBNET_B: !Ref PublicSubnetB
           STATE_MACHINE_ARN: !Ref TaskRunnerStepFunctions
-          SOLUTION_ID: SO0062
+          SOLUTION_ID: !FindInMap [Solution, Config, SolutionId]
           UUID: !GetAtt Uuid.UUID
-          SEND_METRIC: !FindInMap [AnonymousData, SendAnonymousData, Data]
+          VERSION: !FindInMap [Solution, Config, CodeVersion]
+          SEND_METRIC: !FindInMap [Solution, Config, SendAnonymousData]
+          METRIC_URL: !FindInMap [Solution, Config, URL]
+          ECS_LOG_GROUP: !Ref EcsCloudWatchLogGroup
+          TASK_CANCELER_ARN: !GetAtt TaskCanceler.Arn
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: CloudWatchLogsPolicy covers a permission to write CloudWatch logs.
+          - id: W89
+            reason: VPC not needed for lambda
+          - id: W92
+            reason: Does not run concurrent executions
 
   ResultsParser:
     Type: AWS::Lambda::Function
@@ -969,27 +1158,31 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaResultsRole.Arn
       Code:
-        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "results-parser.zip"]]
+        S3Bucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["Solution", "Config", "KeyPrefix"],  "results-parser.zip"]]
       Runtime: nodejs12.x
       Timeout: 120
       Environment:
         Variables:
           SCENARIOS_BUCKET: !Ref ScenariosBucket
           SCENARIOS_TABLE: !Ref ScenariosTable
-          TASK_CLUSTER: !Ref EcsCluster
-          SOLUTION_ID: SO0062
+          SOLUTION_ID: !FindInMap [Solution, Config, SolutionId]
           UUID: !GetAtt Uuid.UUID
-          VERSION: CODE_VERSION
-          SEND_METRIC: !FindInMap [AnonymousData, SendAnonymousData, Data]
+          VERSION: !FindInMap [Solution, Config, CodeVersion]
+          SEND_METRIC: !FindInMap [Solution, Config, SendAnonymousData]
+          METRIC_URL: !FindInMap [Solution, Config, URL]
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
     Metadata:
       cfn_nag:
         rules_to_suppress:
           - id: W58
             reason: CloudWatchLogsPolicy covers a permission to write CloudWatch logs.
+          - id: W89
+            reason: VPC not needed for lambda
+          - id: W92
+            reason: Does not run concurrent executions
 
   TaskRunner:
     Type: AWS::Lambda::Function
@@ -998,10 +1191,10 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaTaskRole.Arn
       Code:
-        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "task-runner.zip"]]
+        S3Bucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["Solution", "Config", "KeyPrefix"],  "task-runner.zip"]]
       Runtime: nodejs12.x
-      Timeout: 180
+      Timeout: 900
       Environment:
         Variables:
           CONSOLE_BUCKET: !Ref ConsoleBucket
@@ -1013,10 +1206,54 @@ Resources:
           TASK_IMAGE: !Sub ${AWS::StackName}-load-tester
           SUBNET_A: !Ref PublicSubnetA
           SUBNET_B: !Ref PublicSubnetB
+          API_INTERVAL: 10
+          ECS_LOG_GROUP: !Ref EcsCloudWatchLogGroup
+          SOLUTION_ID: !FindInMap [Solution, Config, SolutionId]
+          VERSION: !FindInMap [Solution, Config, CodeVersion]
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: CloudWatchLogsPolicy covers a permission to write CloudWatch logs.
+          - id: W89
+            reason: VPC not needed for lambda
+          - id: W92
+            reason: Does not run concurrent executions
 
+  TaskCanceler:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Stops ECS tasks
+      Handler: index.handler
+      Role: !GetAtt LambdaTaskCancelerRole.Arn
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["Solution", "Config", "KeyPrefix"],  "task-canceler.zip"]]
+      Runtime: nodejs12.x
+      Timeout: 300
+      Environment:
+        Variables:
+          METRIC_URL: !FindInMap [Solution, Config, URL]
+          SOLUTION_ID: !FindInMap [Solution, Config, SolutionId]
+          VERSION: !FindInMap [Solution, Config, CodeVersion]
+          SCENARIOS_TABLE: !Ref ScenariosTable
+          TASK_CLUSTER: !Ref EcsCluster
+      Tags:
+        - Key: SolutionId
+          Value: !FindInMap [Solution, Config, SolutionId]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: CloudWatchLogsPolicy covers a permission to write CloudWatch logs.
+          - id: W89
+            reason: VPC not needed for lambda
+          - id: W92
+            reason: Does not run concurrent executions
+ 
   TaskStatusChecker:
     Type: AWS::Lambda::Function
     Properties:
@@ -1024,16 +1261,60 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaTaskStatusRole.Arn
       Code:
-        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "task-status-checker.zip"]]
+        S3Bucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["Solution", "Config", "KeyPrefix"],  "task-status-checker.zip"]]
       Runtime:  nodejs12.x
       Timeout: 180
       Environment:
         Variables:
           TASK_CLUSTER: !Ref EcsCluster
+          SCENARIOS_TABLE: !Ref ScenariosTable
+          TASK_CANCELER_ARN: !GetAtt TaskCanceler.Arn
+          SOLUTION_ID: !FindInMap [Solution, Config, SolutionId]
+          VERSION: !FindInMap [Solution, Config, CodeVersion]
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: CloudWatchLogsPolicy covers a permission to write CloudWatch logs.
+          - id: W89
+            reason: VPC not needed for lambda
+          - id: W92
+            reason: Does not run concurrent executions
+
+  EcrChecker:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: ECR readiness checker
+      Handler: index.handler
+      Role: !GetAtt LambdaEcrCheckerRole.Arn
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["Solution", "Config", "KeyPrefix"],  "ecr-checker.zip"]]
+      Runtime:  nodejs12.x
+      Timeout: 60
+      Environment:
+        Variables:
+          CODE_BUILD_PROJECT: !Ref ContainerCodeBuild
+          ECR_REPOSITORY_NAME: !Ref EcrRepository
+          SCENARIOS_TABLE: !Ref ScenariosTable
+          SOLUTION_ID: !FindInMap [Solution, Config, SolutionId]
+          VERSION: !FindInMap [Solution, Config, CodeVersion]
+      Tags:
+        - Key: SolutionId
+          Value: !FindInMap [Solution, Config, SolutionId]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W58
+            reason: CloudWatchLogsPolicy covers a permission to write CloudWatch logs.
+          - id: W89
+            reason: VPC not needed for lambda
+          - id: W92
+            reason: Does not run concurrent executions
 
 ## API
   ApiLoggingRole:
@@ -1063,7 +1344,7 @@ Resources:
           PolicyName: ApiCloudWatchRolePolicy
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
 
   ApiAccountConfig:
     Type: AWS::ApiGateway::Account
@@ -1073,8 +1354,15 @@ Resources:
 
   ApiLogs:
     Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 365
     UpdateReplacePolicy: Retain
     DeletionPolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: KMS encryption unnecessary for log group
 
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -1279,95 +1567,96 @@ Resources:
           Empty:
             type: "object"
             title: "Empty Schema"
-
+      Tags:
+        - Key: SolutionId
+          Value: !FindInMap [Solution, Config, SolutionId]
 ## Cognito
   CognitoAuthorizedRole:
-    Type: "AWS::IAM::Role"
+    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: 2012-10-17
         Statement:
-          - Effect: "Allow"
+          - Effect: Allow
             Principal:
-              Federated: "cognito-identity.amazonaws.com"
+              Federated: cognito-identity.amazonaws.com
             Action:
-              - "sts:AssumeRoleWithWebIdentity"
+              - sts:AssumeRoleWithWebIdentity
       Policies:
         - PolicyName: !Sub ${AWS::StackName}-congnito-access-role
           PolicyDocument:
-            Version: "2012-10-17"
+            Version: 2012-10-17
             Statement:
-              - Effect: "Allow"
+              - Effect: Allow
                 Action:
-                  - "execute-api:Invoke"
+                  - execute-api:Invoke
                 Resource: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/prod/*
-              - Effect: "Allow"
+              - Effect: Allow
                 Action:
-                  - "s3:PutObject"
-                  - "s3:GetObject"
+                  - s3:PutObject
+                  - s3:GetObject
                 Resource: !Sub ${ScenariosBucket.Arn}/public/*
 
   CognitoUnAuthorizedRole:
-    Type: "AWS::IAM::Role"
+    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: "2012-10-17"
+        Version: 2012-10-17
         Statement:
-          - Effect: "Allow"
+          - Effect: Allow
             Principal:
-              Federated: "cognito-identity.amazonaws.com"
+              Federated: cognito-identity.amazonaws.com
             Action:
-              - "sts:AssumeRoleWithWebIdentity"
+              - sts:AssumeRoleWithWebIdentity
 
   CognitoUserPool:
-      Type: "AWS::Cognito::UserPool"
-      Properties:
-          UserPoolName: !Sub ${AWS::StackName}
-          AdminCreateUserConfig:
-              AllowAdminCreateUserOnly: True
-              InviteMessageTemplate:
-                  EmailMessage:
-                      !Sub |
-                        <p>You are invited to join the Distribution Load Testing Solution.</p>
-                        <p>Username: <strong>{username}</strong></p>
-                        <p>Password: <strong>{####}</strong></p>
-                        <p>Console: <strong>https://${ConsoleCloudFront.DomainName}/</strong></p>
-                  EmailSubject: Welcome to Distributed Load Testing
-                  SMSMessage: "Your username is {username} and temporary password is {####}."
-              UnusedAccountValidityDays: 7
-          AliasAttributes:
-              - "email"
-          AutoVerifiedAttributes:
-              - "email"
-          EmailVerificationMessage: "Your Distribution Load Testing console verification code is {####}."
-          EmailVerificationSubject: "Your Distribution Load Testing console verification code"
-          Policies:
-              PasswordPolicy:
-                    MinimumLength: 8
-                    RequireLowercase: True
-                    RequireNumbers: True
-                    RequireSymbols: False
-                    RequireUppercase: True
-          Schema:
-              -
-                AttributeDataType: "String"
-                Name: "email"
-                Required: True
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${AWS::StackName}
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: True
+        InviteMessageTemplate:
+          EmailMessage:
+            !Sub |
+              <p>You are invited to join the Distribution Load Testing Solution.</p>
+              <p>Username: <strong>{username}</strong></p>
+              <p>Password: <strong>{####}</strong></p>
+              <p>Console: <strong>https://${ConsoleCloudFront.DomainName}/</strong></p>
+          EmailSubject: Welcome to Distributed Load Testing
+          SMSMessage: "Your username is {username} and temporary password is {####}."
+        UnusedAccountValidityDays: 7
+      AliasAttributes:
+        - "email"
+      AutoVerifiedAttributes:
+        - "email"
+      EmailVerificationMessage: "Your Distribution Load Testing console verification code is {####}."
+      EmailVerificationSubject: "Your Distribution Load Testing console verification code"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: True
+          RequireNumbers: True
+          RequireSymbols: False
+          RequireUppercase: True
+      Schema:
+        - AttributeDataType: "String"
+          Name: "email"
+          Required: True
 
   CognitoUserPoolClient:
-      Type: AWS::Cognito::UserPoolClient
-      Properties:
-          ClientName: !Sub ${AWS::StackName}-app
-          GenerateSecret: False
-          WriteAttributes:
-              - "address"
-              - "email"
-              - "phone_number"
-          RefreshTokenValidity: 1
-          UserPoolId: !Ref CognitoUserPool
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ${AWS::StackName}-app
+      GenerateSecret: False
+      WriteAttributes:
+        - "address"
+        - "email"
+        - "phone_number"
+      RefreshTokenValidity: 1
+      UserPoolId: !Ref CognitoUserPool
 
   CognitoIdentityPool:
-    Type: "AWS::Cognito::IdentityPool"
+    Type: AWS::Cognito::IdentityPool
     Properties:
       IdentityPoolName: !Sub ${AWS::StackName}
       AllowUnauthenticatedIdentities: false
@@ -1384,23 +1673,20 @@ Resources:
         authenticated: !GetAtt CognitoAuthorizedRole.Arn
 
   CognitoUser:
-    Type: "AWS::Cognito::UserPoolUser"
+    Type: AWS::Cognito::UserPoolUser
     Properties:
-        DesiredDeliveryMediums:
-            - EMAIL
-        ForceAliasCreation: true
-        UserAttributes:
-            -
-                Name: email
-                Value: !Ref AdminEmail
-            -
-                Name: nickname
-                Value: !Ref AdminName
-            -
-                Name: email_verified
-                Value: 'True'
-        Username: !Ref AdminName
-        UserPoolId: !Ref CognitoUserPool
+      DesiredDeliveryMediums:
+        - EMAIL
+      ForceAliasCreation: true
+      UserAttributes:
+        - Name: email
+          Value: !Ref AdminEmail
+        - Name: nickname
+          Value: !Ref AdminName
+        - Name: email_verified
+          Value: 'True'
+      Username: !Ref AdminName
+      UserPoolId: !Ref CognitoUserPool
 
 ## Step Functions
   TaskRunnerStepFunctions:
@@ -1410,8 +1696,32 @@ Resources:
       DefinitionString: !Sub |
         {
           "Comment": "Distributed Load Testing on AWS Task Runner",
-          "StartAt": "Check running tests",
+          "StartAt": "Check ECR is ready",
           "States": {
+            "Check ECR is ready": {
+              "Type": "Task",
+              "Resource": "${EcrChecker.Arn}",
+              "InputPath": "$",
+              "OutputPath": "$",
+              "Next": "ECR is ready?"
+            },
+            "ECR is ready?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.ecrReady",
+                  "BooleanEquals": true,
+                  "Next": "Check running tests"
+                }
+              ],
+              "Default": "Wait 1 minute - ECR ready"
+            },
+            "Wait 1 minute - ECR ready": {
+              "Comment": "Wait 1 minute to check ECR readiness",
+              "Type": "Wait",
+              "Seconds": 60,
+              "Next": "Check ECR is ready"
+            },
             "Check running tests": {
               "Type": "Task",
               "Resource": "${TaskStatusChecker.Arn}",
@@ -1425,7 +1735,7 @@ Resources:
                 {
                   "Variable": "$.isRunning",
                   "BooleanEquals": false,
-                  "Next": "Run tasks"
+                  "Next": "Run workers"
                 }
               ],
               "Default": "Test is still running"
@@ -1435,15 +1745,80 @@ Resources:
               "Error": "TestAlreadyRunning",
               "Cause": "The same test is already running."
             },
-            "Run tasks": {
+            "Run workers": {
               "Type": "Task",
               "Resource": "${TaskRunner.Arn}",
               "InputPath": "$",
               "OutputPath": "$",
-              "Next": "Wait 1 minute"
+              "Next": "All workers launched?"
             },
-            "Wait 1 minute": {
-              "Comment": "Wait 1 minute",
+            "All workers launched?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.isRunning",
+                  "BooleanEquals": false,
+                  "Next": "Cancel Test"
+                },
+                {
+                  "Variable": "$.taskRunner.runTaskCount",
+                  "NumericEquals": 1,
+                  "Next": "Wait 1 minute - worker status"
+                },
+                {
+                  "Variable": "$.taskRunner.runTaskCount",
+                  "NumericEquals": 0,
+                  "Next": "Wait 1 minute - task status"
+                }
+              ],
+              "Default": "Run workers"
+            },
+            "Cancel Test": {
+              "Type": "Task",
+              "Resource": "${TaskCanceler.Arn}",
+              "InputPath": "$",
+              "ResultPath": null,
+              "OutputPath": "$",
+              "Next": "Parse result"
+            },
+            "Wait 1 minute - worker status": {
+              "Comment": "Wait 1 minute to check task status again",
+              "Type": "Wait",
+              "Seconds": 60,
+              "Next": "Check worker status"
+            },
+            "Check worker status": {
+              "Type": "Task",
+              "Resource": "${TaskStatusChecker.Arn}",
+              "InputPath": "$",
+              "OutputPath": "$",
+              "Next": "All workers running?"
+            },
+            "All workers running?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.numTasksRunning",
+                  "NumericEqualsPath": "$.scenario.taskCount",
+                  "Next": "Run leader task"
+                },
+                {
+                  "Variable": "$.isRunning",
+                  "BooleanEquals": false,
+                  "Next": "Parse result"
+                }
+              ],
+              "Default": "Wait 1 minute - worker status"
+            },
+            "Run leader task": {
+              "Type": "Task",
+              "Resource": "${TaskRunner.Arn}",
+              "InputPath": "$",
+              "OutputPath": "$",
+              "Next": "Wait 1 minute - task status"
+            },
+            "Wait 1 minute - task status": {
+              "Comment": "Wait 1 minute to check task status again",
               "Type": "Wait",
               "Seconds": 60,
               "Next": "Check task status"
@@ -1464,7 +1839,7 @@ Resources:
                   "Next": "Is Test Type JMeter?"
                 }
               ],
-              "Default": "Wait 1 minute"
+              "Default": "Wait 1 minute - task status"
             },
             "Is Test Type JMeter?": {
               "Type": "Choice",
@@ -1482,11 +1857,8 @@ Resources:
               "Resource": "${TaskRunner.Arn}",
               "Next": "Wait 30 seconds For Dashboard Report"
             },
-
-
-
             "Wait 30 seconds For Dashboard Report": {
-              "Comment": "Wait 1 minute",
+              "Comment": "Wait 30 seconds",
               "Type": "Wait",
               "Seconds": 30,
               "Next": "Check dashboard report status"
@@ -1509,8 +1881,6 @@ Resources:
               ],
               "Default": "Wait 30 seconds For Dashboard Report"
             },
-
-
             "Parse result": {
               "Type": "Task",
               "Resource": "${ResultsParser.Arn}",
@@ -1522,9 +1892,25 @@ Resources:
             }
           }
         }
+      LoggingConfiguration: 
+        Destinations: 
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StepFunctionsLogGroup.Arn
+        IncludeExecutionData: false
+        Level: ALL
       Tags:
         - Key: SolutionId
-          Value: SO0062
+          Value: !FindInMap [Solution, Config, SolutionId]
+
+  StepFunctionsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 365
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: KMS encryption unnecessary for log group.
 
   TaskRunnerStepFunctionsRole:
     Type: AWS::IAM::Role
@@ -1550,6 +1936,24 @@ Resources:
                   - !GetAtt TaskStatusChecker.Arn
                   - !GetAtt TaskRunner.Arn
                   - !GetAtt ResultsParser.Arn
+                  - !GetAtt EcrChecker.Arn
+                  - !GetAtt TaskCanceler.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups       
+                Resource: "*"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: Actions do not support resource level permissions
 
 ## Custom Resources
   CopyDockerFile:
@@ -1557,8 +1961,8 @@ Resources:
     Properties:
       ServiceToken: !GetAtt CustomResource.Arn
       Resource: CopyAssets
-      SrcBucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-      SrcPath: !FindInMap ["SourceCode", "General", "KeyPrefix"]
+      SrcBucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+      SrcPath: !FindInMap ["Solution", "Config", "KeyPrefix"]
       ManifestFile: container-manifest.json
       DestBucket: !Ref ContainerBucket
 
@@ -1567,8 +1971,8 @@ Resources:
     Properties:
       ServiceToken: !GetAtt CustomResource.Arn
       Resource: CopyAssets
-      SrcBucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-      SrcPath: !FindInMap ["SourceCode", "General", "KeyPrefix"]
+      SrcBucket: !Join ["-", [!FindInMap ["Solution", "Config", "S3Bucket"], Ref: "AWS::Region"]]
+      SrcPath: !FindInMap ["Solution", "Config", "KeyPrefix"]
       ManifestFile: console-manifest.json
       DestBucket: !Ref ConsoleBucket
 
@@ -1581,7 +1985,7 @@ Resources:
       AwsExports:
         !Sub |
           const awsConfig = {
-            cw_dashboard: 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${EcsLoadTesting}',
+            cw_dashboard: 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=',
             ecs_dashboard: 'https://${AWS::Region}.console.aws.amazon.com/ecs/home?region=${AWS::Region}#/clusters/${AWS::StackName}/tasks',
             aws_project_region: '${AWS::Region}',
             aws_cognito_region: '${AWS::Region}',
@@ -1601,7 +2005,7 @@ Resources:
           }
 
   Uuid:
-    Type: "Custom::UUID"
+    Type: Custom::UUID
     Properties:
       ServiceToken: !GetAtt CustomResource.Arn
       Resource: UUID
@@ -1613,20 +2017,17 @@ Resources:
       ServiceToken: !GetAtt CustomResource.Arn
       Resource: AnonymousMetric
       Region: !Ref AWS::Region
-      SolutionId: SO0062
+      SolutionId: !FindInMap [Solution, Config, SolutionId]
       UUID: !GetAtt Uuid.UUID
-      Version: CODE_VERSION
+      Version: !FindInMap [Solution, Config, CodeVersion]
 
 Outputs:
-
   Console:
     Description: Console URL
     Value: !Sub https://${ConsoleCloudFront.DomainName}/
-
   ApiGatewayEndpoint:
-        Description: "Distributed Load Testing API"
-        Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod"
-
+    Description: "Distributed Load Testing API"
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod"
   SolutionUUID:
     Description: "Solution UUID"
     Value: !GetAtt Uuid.UUID

@@ -14,8 +14,7 @@ class Dashboard extends React.Component {
         super(props);
         this.state = {
             Items: [],
-            isLoading: true,
-            noData: false
+            isLoading: true
         }
     }
 
@@ -27,14 +26,16 @@ class Dashboard extends React.Component {
 
         try {
             const data = await API.get('dlts', '/scenarios');
-            this.setState({
-                Items: data.Items,
-                isLoading:false
+            data.Items.sort((a, b) => {
+                if (!a.startTime) a.startTime = '';
+                if (!b.startTime) b.startTime = '';
+                return b.startTime.localeCompare(a.startTime)
             });
 
-            if (data.Items.length === 0 ) {
-                this.setState({ noData:true });
-            }
+            this.setState({
+                Items: data.Items,
+                isLoading: false
+            });
         } catch (err) {
             alert(err);
         }
@@ -63,8 +64,10 @@ class Dashboard extends React.Component {
                         <td className="desc">{item.testDescription}</td>
                         <td>{item.startTime}</td>
                         <td className={item.status}>{item.status}</td>
+                        <td>{item.nextRun}</td>
+                        <td className="recurrence">{item.scheduleRecurrence}</td>
                         <td className="td-center">
-                            <Link id={`detailLink-${item.testId}`} to= {{ pathname: "/details", state: { testId: item.testId } }}>
+                            <Link id={`detailLink-${item.testId}`} to= {{ pathname: `/details/${item.testId}`, state: { testId: item.testId } }}>
                                 <FontAwesomeIcon icon={faArrowAltCircleRight} size="lg" />
                             </Link>
                         </td>
@@ -89,6 +92,8 @@ class Dashboard extends React.Component {
                                 <th>Description</th>
                                 <th>Last Run (UTC)</th>
                                 <th>Status</th>
+                                <th>Next Run (UTC)</th>
+                                <th>Recurrence</th>
                                 <th className="td-center">Details</th>
                             </tr>
                         </thead>

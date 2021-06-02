@@ -16,15 +16,20 @@ import {
     Spinner,
     InputGroup,
     CustomInput,
+    Collapse,
+    Nav,
+    NavItem,
+    NavLink,
+    TabContent,
+    TabPane,
 } from 'reactstrap';
 import * as shortid from 'shortid';
-
 import 'brace/theme/github';
 
 // Upload file size limit
-const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
+const FILE_SIZE_LIMIT = 50 * 1024 * 1024;
 
-// Allowed file extensions
+// Allowed file extentions
 const FILE_EXTENSIONS = ['jmx', 'zip'];
 
 class Create extends React.Component {
@@ -32,13 +37,25 @@ class Create extends React.Component {
     constructor(props){
         super(props);
         if (this.props.location.state && this.props.location.state.data.testId) {
+            let fileType = '';
+            if (this.props.location.state.data.testType && this.props.location.state.data.testType !== 'simple') {
+                if (this.props.location.state.data.fileType) {
+                    fileType = this.props.location.state.data.fileType;
+                } else {
+                    fileType = 'script';
+                }
+            }
+
             this.state = {
                 isLoading: false,
                 runningTasks: false,
+                availableTasks: 1000,
                 testId: this.props.location.state.data.testId,
                 file: null,
                 validFile: false,
                 chooseNewFile: false,
+                activeTab: this.props.location.state.data.recurrence ? '2' : '1',
+                submitLabel: this.props.location.state.data.scheduleDate ? "Schedule" : "Run Now",
                 formValues: {
                     testName: this.props.location.state.data.testName,
                     testDescription: this.props.location.state.data.testDescription,
@@ -50,19 +67,27 @@ class Create extends React.Component {
                     rampUpUnits: this.props.location.state.data.rampUp.slice(-1),
                     endpoint: this.props.location.state.data.endpoint,
                     method: this.props.location.state.data.method,
-                    body: JSON.stringify(this.props.location.state.data.body),
-                    headers: JSON.stringify(this.props.location.state.data.headers),
-                    testType: this.props.location.state.data.testType ? this.props.location.state.data.testType : 'simple'
+                    body: JSON.stringify(this.props.location.state.data.body, null, 2),
+                    headers: JSON.stringify(this.props.location.state.data.headers, null, 2),
+                    testType: this.props.location.state.data.testType ? this.props.location.state.data.testType : 'simple',
+                    fileType: fileType,
+                    onSchedule: this.props.location.state.data.scheduleDate ? '1' : '0',
+                    scheduleDate: this.props.location.state.data.scheduleDate || null,
+                    scheduleTime: this.props.location.state.data.scheduleTime || null,
+                    recurrence: this.props.location.state.data.recurrence || null
                 }
             }
         } else {
             this.state = {
                 isLoading: false,
                 runningTasks: false,
+                availableTasks: 1000,
                 testId: null,
                 file: null,
                 validFile: false,
                 chooseNewFile: false,
+                activeTab: '1',
+                submitLabel: 'Run Now',
                 formValues: {
                     testName:'',
                     testDescription: '',
@@ -76,7 +101,12 @@ class Create extends React.Component {
                     method:'GET',
                     body: '',
                     headers: '',
-                    testType: 'simple'
+                    testType: 'simple',
+                    fileType: '',
+                    onSchedule: '0',
+                    scheduleDate: null,
+                    scheduleTime: null,
+                    recurrence: null
                 }
             };
         }
@@ -91,6 +121,7 @@ class Create extends React.Component {
         this.handleCheckBox = this.handleCheckBox.bind(this);
         this.parseJson = this.parseJson.bind(this);
         this.listTasks = this.listTasks.bind(this);
+        this.toggleTab = this.toggleTab.bind(this);
     }
 
     parseJson(str) {
@@ -102,8 +133,6 @@ class Create extends React.Component {
     }
 
     handleSubmit = async () => {
-        this.setState({ isLoading: true });
-
         const values = this.state.formValues;
 
         if (!this.form.current.reportValidity() ) {
@@ -147,8 +176,19 @@ class Create extends React.Component {
                     }
                 }
             },
-            testType: values.testType
+            testType: values.testType,
+            fileType: values.fileType
         };
+
+        if(!!parseInt(values.onSchedule)) {
+            payload.scheduleDate = values.scheduleDate;
+            payload.scheduleTime = values.scheduleTime;
+            payload.scheduleStep = "start";
+            if(this.state.activeTab === '2') {
+                payload.scheduleStep = "create";
+                payload.recurrence = values.recurrence;
+            }
+        }
 
         if (values.testType === 'simple') {
             if (!values.headers) {
@@ -182,7 +222,16 @@ class Create extends React.Component {
             if (this.state.file) {
                 try {
                     const file = this.state.file;
-                    await Storage.put(`test-scenarios/jmeter/${testId}.${this.state.extension}`, file);
+                    let filename = `${testId}.jmx`;
+
+                    if (file.type && file.type.includes('zip')) {
+                        payload.fileType = 'zip';
+                        filename = `${testId}.zip`;
+                    } else {
+                        payload.fileType = 'script';
+                    }
+
+                    await Storage.put(`test-scenarios/jmeter/${filename}`, file);
                     console.log('Script uploaded successfully');
                 } catch (error) {
                     console.error('Error', error);
@@ -190,10 +239,12 @@ class Create extends React.Component {
             }
         }
 
+        this.setState({ isLoading: true });
+
         try {
             const response = await API.post('dlts', '/scenarios', { body: payload });
-            console.log('Scenario created successfully', response);
-            this.props.history.push({ pathname: '/details', state: { testId: response.testId } });
+            console.log('Scenario created successfully', response.testId);
+            this.props.history.push({ pathname: `/details/${response.testId}`, state: { testId: response.testId } });
         } catch (err) {
             console.error('Failed to create scenario', err);
             this.setState({ isLoading: false });
@@ -209,6 +260,14 @@ class Create extends React.Component {
     handleInputChange(event) {
         const value = event.target.value;
         const name = event.target.name;
+
+        if (name === 'testType') {
+            this.setState({ file: null });
+        } else if (name === 'onSchedule')
+        {
+            this.setState({ submitLabel: value === '1' ? 'Schedule' : 'Run Now' })
+        }
+
         this.setFormValue(name, value);
     }
 
@@ -222,12 +281,12 @@ class Create extends React.Component {
 
     handleFileChange(event) {
         const file = event.target.files[0];
-        if (file) {
-            this.setState({
-                file: null,
-                validFile: false
-            });
+        this.setState({
+            file: null,
+            validFile: false
+        });
 
+        if (file) {
             const { name, size } = file;
             const extension = name.split('.').pop();
 
@@ -243,13 +302,7 @@ class Create extends React.Component {
 
             this.setState({
                 file,
-                validFile: true,
-                extension
-            });
-        } else {
-            this.setState({
-                file: null,
-                validFile: false
+                validFile: true
             });
         }
     }
@@ -272,14 +325,22 @@ class Create extends React.Component {
             const data = await API.get('dlts', '/tasks');
             if (data.length !== 0 ) {
                 this.setState({ runningTasks: true });
+                this.setState({ availableTasks: 1000 - data.length });
             }
         } catch (err) {
             alert(err);
         }
     };
 
-    componentDidMount() {
-        this.listTasks();
+    toggleTab(tab) {
+        if(this.state.activeTab !== tab)
+        {
+            this.setState({ activeTab: tab });
+        }
+    }
+
+    async componentDidMount() {
+        await this.listTasks();
     }
 
     render() {
@@ -287,25 +348,15 @@ class Create extends React.Component {
         const cancel = () => {
             return this.state.testId === null ?
                 this.props.history.push('/') :
-                this.props.history.push({ pathname: '/details', state: { testId: this.state.testId }})
+                this.props.history.push({ pathname: `/details/${this.state.testId}`, state: { testId: this.state.testId }})
         }
-
-        const warning = (
-            <div>
-                <div className="box">
-                    <h1>{ this.state.testId === null ? 'Create' : 'Update' } Load Test</h1>
-                </div>
-                <p className="warning">Warning there is a test running, multiple concurrent tests is currently not supported to avoid hitting the AWS Fargate task limits. Please wait for the test to finish before submitting a new test!</p>
-            </div>
-
-        )
 
         const heading = (
             <div className="box">
                 <h1>{ this.state.testId === null ? 'Create' : 'Update' } Load Test</h1>
             </div>
         )
-
+        const currentDate = new Date().toISOString().split('T')[0];
         const createTestForm = (
             <div>
                 <Row>
@@ -348,7 +399,7 @@ class Create extends React.Component {
                                     type="number"
                                     name="taskCount"
                                     id="taskCount"
-                                    max={100}
+                                    max={Math.min(this.state.availableTasks, 1000)}
                                     min={1}
                                     step={1}
                                     required
@@ -356,7 +407,7 @@ class Create extends React.Component {
                                 />
                                 <FormText color="muted">
                                     Number of docker containers that will be launched in the Fargate cluster to run the
-                                    test scenario, max value 100.
+                                    test scenario, max value 1000. ({this.state.availableTasks} available).
                                 </FormText>
                             </FormGroup>
 
@@ -366,7 +417,6 @@ class Create extends React.Component {
                                     value={this.state.formValues.concurrency}
                                     className="form-short"
                                     type="number"
-                                    max={200}
                                     min={1}
                                     step={1}
                                     name="concurrency"
@@ -375,7 +425,15 @@ class Create extends React.Component {
                                     onChange={this.handleInputChange}
                                 />
                                 <FormText color="muted">
-                                    The number of concurrent virtual users generated per task, max value 200.
+                                    The number of concurrent virtual users generated per task. The recommended limit based on default settings is 200 virtual users.
+                                    Concurrency is limited by CPU and Memory. Please see the &nbsp; 
+                                    <a className="text-link"
+                                        href={"https://docs.aws.amazon.com/solutions/latest/distributed-load-testing-on-aws/considerations.html#load-testing-limits"}
+                                        target="_blank"
+                                        rel="noopener noreferrer">
+                                            implementation guide
+                                    </a> 
+                                   &nbsp;for instructions on how to determine the amount concurrency your test can support.
                                 </FormText>
                             </FormGroup>
                             <FormGroup>
@@ -438,6 +496,169 @@ class Create extends React.Component {
                                     Time to hold target concurrency.
                                 </FormText>
                             </FormGroup>
+                            <FormGroup>
+                                <CustomInput inline
+                                    type="radio"
+                                    name="onSchedule"
+                                    id="now"
+                                    value={0}
+                                    checked={this.state.formValues.onSchedule === '0'}
+                                    required
+                                    onChange={this.handleInputChange}
+                                    label="Run Now"
+                                />
+                                <CustomInput inline
+                                    type="radio"
+                                    name="onSchedule"
+                                    id="schedule"
+                                    value={1}
+                                    checked={this.state.formValues.onSchedule === '1'}
+                                    required
+                                    onChange={this.handleInputChange}
+                                    label="Run on Schedule"
+                                />
+                            </FormGroup>
+                            <Collapse isOpen={!!parseInt(this.state.formValues.onSchedule)}>
+                                <Nav tabs>
+                                    <NavItem>
+                                        <NavLink
+                                            classname="custom-tab"
+                                            active={this.state.activeTab === '1'}
+                                            onClick={() => this.toggleTab('1')}
+                                        >
+                                            One Time
+                                        </NavLink>
+                                    </NavItem>
+                                    <NavItem>
+                                        <NavLink
+                                            classname="custom-tab"
+                                            active={this.state.activeTab === '2'}
+                                            onClick={() => this.toggleTab('2')}
+                                        >
+                                            Recurring
+                                        </NavLink>
+                                    </NavItem>
+                                </Nav>
+                                <TabContent activeTab={this.state.activeTab}>
+                                    <TabPane tabId='1'>
+                                        <FormGroup>
+                                            <InputGroup inline>
+                                            <Label for="scheduleDate">Date:&nbsp;</Label>
+                                                &nbsp;
+                                                <Input inline
+                                                    type="date"
+                                                    name="scheduleDate"
+                                                    id="scheduleDate"
+                                                    placeholder="date placeholder"
+                                                    min={currentDate}
+                                                    value={this.state.formValues.scheduleDate}
+                                                    onChange={this.handleInputChange}
+                                                    required={parseInt(this.state.formValues.onSchedule) === 1}
+                                                >
+                                                </Input>
+                                                &nbsp;
+                                                <Label for="scheduleTime">Time:&nbsp;</Label>
+                                                &nbsp;
+                                                <Input inline
+                                                    type="time"
+                                                    name="scheduleTime"
+                                                    id="scheduleTime"
+                                                    placeholder="time placeholder"
+                                                    value={this.state.formValues.scheduleTime}
+                                                    onChange={this.handleInputChange}
+                                                    required={parseInt(this.state.formValues.onSchedule) === 1}
+                                                >
+                                                </Input>
+                                                </InputGroup>
+                                                <FormText color="muted">
+                                                    The date and time(UTC) to run the test.
+                                                </FormText>
+                                        </FormGroup>
+                                    </TabPane>
+                                    <TabPane tabId='2'>
+                                        <FormGroup>
+                                            <InputGroup inline>
+                                            <Label for="scheduleDate">Date:&nbsp;</Label>
+                                            &nbsp;
+                                                <Input inline
+                                                    type="date"
+                                                    name="scheduleDate"
+                                                    id="scheduleDate"
+                                                    placeholder="date placeholder"
+                                                    min={currentDate}
+                                                    value={this.state.formValues.scheduleDate}
+                                                    onChange={this.handleInputChange}
+                                                    required={this.state.activeTab === '2'}
+                                                />
+                                                &nbsp;
+                                                <Label for="scheduleTime">Time:&nbsp;</Label>
+                                                &nbsp;
+                                                    <Input inline
+                                                    type="time"
+                                                    name="scheduleTime"
+                                                    id="time"
+                                                    placeholder="time placeholder"
+                                                    value={this.state.formValues.scheduleTime}
+                                                    onChange={this.handleInputChange}
+                                                    required={this.state.activeTab === '2'}
+                                                />
+                                                </InputGroup>
+                                                <FormText color="muted">
+                                                    The date and time(UTC) to first run the test.
+                                                </FormText>
+                                        </FormGroup>
+                                        <FormGroup>
+                                            <InputGroup inline>
+                                            <Label>Recurence:&nbsp;</Label>
+                                            &nbsp;
+                                            <CustomInput inline
+                                                type="radio"
+                                                name="recurrence"
+                                                id="daily"
+                                                value="daily"
+                                                checked={this.state.formValues.recurrence === 'daily'}
+                                                required={this.state.activeTab === '2'}
+                                                onChange={this.handleInputChange}
+                                                label="Daily"
+                                            />
+                                            <CustomInput inline
+                                                type="radio"
+                                                name="recurrence"
+                                                id="weekly"
+                                                value="weekly"
+                                                checked={this.state.formValues.recurrence === 'weekly'}
+                                                required={this.state.activeTab === '2'}
+                                                onChange={this.handleInputChange}
+                                                label="Weekly"
+                                            />
+                                            <CustomInput inline
+                                                type="radio"
+                                                name="recurrence"
+                                                id="biweekly"
+                                                value="biweekly"
+                                                checked={this.state.formValues.recurrence === 'biweekly'}
+                                                required={this.state.activeTab === '2'}
+                                                onChange={this.handleInputChange}
+                                                label="Biweekly"
+                                            />
+                                            <CustomInput inline
+                                                type="radio"
+                                                name="recurrence"
+                                                id="monthly"
+                                                value="monthly"
+                                                checked={this.state.formValues.recurrence === 'monthly'}
+                                                required={this.state.activeTab === '2'}
+                                                onChange={this.handleInputChange}
+                                                label="Monthly"
+                                            />
+                                            </InputGroup> 
+                                            <FormText color="muted">
+                                                How often to run the test.
+                                            </FormText>
+                                        </FormGroup>
+                                    </TabPane>
+                                </TabContent>
+                            </Collapse> 
                         </div>
                     </Col>
                     <Col sm="6">
@@ -453,7 +674,7 @@ class Create extends React.Component {
                                     value={this.state.formValues.testType}
                                     onChange={this.handleInputChange}
                                 >
-                                    <option value="simple">Simple Test</option>
+                                    <option value="simple">Single HTTP Endpoint</option>
                                     <option value="jmeter">JMeter</option>
                                 </Input>
                             </FormGroup>
@@ -500,10 +721,8 @@ class Create extends React.Component {
                                         <Label for="testDescription">HTTP Headers (Optional)</Label>
                                         <AceEditor
                                             id="headers"
-                                            mode="text"
+                                            mode="json"
                                             theme="github"
-                                            showPrintMargin={true}
-                                            showGutter={true}
                                             value={this.state.formValues.headers}
                                             highlightActiveLine={true}
                                             onChange={this.handleHeadersChange}
@@ -526,8 +745,6 @@ class Create extends React.Component {
                                             id="bodyPayload"
                                             mode="json"
                                             theme="github"
-                                            showPrintMargin={true}
-                                            showGutter={true}
                                             highlightActiveLine={true}
                                             onChange={this.handleBodyPayloadChange}
                                             name="bodyPayload"
@@ -550,23 +767,26 @@ class Create extends React.Component {
                                 this.state.formValues.testType !== 'simple' &&
                                 <div>
                                     {
-                                        this.state.testId &&
+                                        ['zip', 'script'].includes(this.state.formValues.fileType) &&
                                         <FormGroup check>
                                             <Label check>
-                                                <Input id="newScriptCheckboux" type="checkbox" onClick={this.handleCheckBox} value={this.state.validFile} /> Choose new script.
+                                                <Input id="newScriptCheckboux" type="checkbox" onClick={this.handleCheckBox} defaultChecked={this.state.chooseNewFile} /> Choose a new file.
                                             </Label>
                                         </FormGroup>
                                     }
                                     {
-                                        (!this.state.testId || this.state.chooseNewFile) &&
+                                        ((this.state.formValues.testType !== 'simple' && !['zip', 'script'].includes(this.state.formValues.fileType)) || this.state.chooseNewFile) &&
                                         <FormGroup>
-                                            <Label for="fileUpload">Script File</Label>
+                                            <Label for="fileUpload">Upload File</Label>
                                             <CustomInput
                                                 type="file"
                                                 id="fileUpload"
                                                 name="fileUpload"
                                                 onChange={this.handleFileChange}
-                                                disabled={this.state.runningTasks} />
+                                            />
+                                            <FormText color="muted">
+                                                You can choose either a <code>.jmx</code> file or a <code>.zip</code> file. Choose <code>.zip</code> file if you have any files to upload other than a <code>.jmx</code> script file.
+                                            </FormText>
                                         </FormGroup>
                                     }
                                 </div>
@@ -576,12 +796,11 @@ class Create extends React.Component {
                                 className="submit"
                                 size="sm"
                                 onClick={this.handleSubmit}
-                                disabled={this.state.runningTasks ||
-                                    (this.state.formValues.testType !== 'simple' && (
-                                        (this.state.chooseNewFile && !this.state.validFile) || (!this.state.testId && !this.state.validFile)
-                                    ))}
+                                disabled={
+                                    (this.state.formValues.testType !== 'simple' && (!this.state.file && (this.state.chooseNewFile || !['zip', 'script'].includes(this.state.formValues.fileType))))
+                                }
                             >
-                                Submit
+                                {this.state.submitLabel}
                             </Button>
                             <Button
                                 id="cancelButton"
@@ -603,7 +822,7 @@ class Create extends React.Component {
             <div>
                 <form ref={this.form} onSubmit={e => e.preventDefault()}>
 
-                    { this.state.runningTasks ? warning : heading }
+                    { heading }
 
                     <div>
                         {this.state.isLoading ? <div className="loading"><Spinner color="secondary" /></div> : createTestForm}

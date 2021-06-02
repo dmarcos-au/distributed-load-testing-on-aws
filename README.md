@@ -14,7 +14,7 @@ The Distributed Load Testing Solution leverages managed, highly available and hi
 ![Architecture](architecture.png)
 
 ## Deployment
-The solution is deployed using a CloudFormation template with a lambda backed custom resource. For details on deploying the solution please see the details on the solution home page: [Distributed Load Testing](https://aws.amazon.com/solutions/distributed-load-testing-on-aws/)
+The solution is deployed using a CloudFormation template with a lambda backed custom resource. For details on deploying the solution please see the details on the solution home page: [Distributed Load Testing](https://aws.amazon.com/solutions/implementations/distributed-load-testing-on-aws/)
 
 ## Source Code
 
@@ -30,14 +30,20 @@ The Taurus DockerFile and bash script run at start of the test to download the t
 **source/custom-resource**<br/>
 A NodeJS Lambda function used as a CloudFormation custom resource for configuring Amazon S3 bucket notifications and to send anonymous metrics.
 
+**source/ecr-checker**<br/>
+A NodeJS Lambda function that checks if the Amazon ECR is ready or not.
+
 **source/results-parser**<br/>
 A NodeJS Lambda function used to write the xml output from the docker images to Amazon DynamoDB and generate the final results for each test.
 
+**source/task-canceler**<br/>
+A NodeJS Lambda function used to stop tasks for a test that has been cancelled.
+
 **source/task-runner**<br/>
-A NodeJS Lambda function that runs the Amaazon ECS task definition for each test.
+A NodeJS Lambda function that runs the Amazon ECS task definition for each test.
 
 **source/task-status-checker**<br/>
-A NodeJS Lambda function that checks if the Amaazon ECS tasks are running or not.
+A NodeJS Lambda function that checks if the Amazon ECS tasks are running or not.
 
 ## Creating a custom build
 The solution can be deployed through the CloudFormation template available on the solution home page: [Distributed Load Testing](https://aws.amazon.com/solutions/implementations/distributed-load-testing-on-aws/).
@@ -95,20 +101,6 @@ aws s3 cp ./global-s3-assets/ s3://$DIST_OUTPUT_BUCKET-$REGION/$SOLUTION_NAME/$V
 ### 7. Launch the CloudFormation template.
 * Get the link of the `distributed-load-testing-on-aws.template` uploaded to your Amazon S3 bucket.
 * Deploy the Distributed Load Testing on AWS solution to your account by launching a new AWS CloudFormation stack using the link of the `distributed-load-testing-on-aws.template`.
-
-## Debugging
-
-To debug locally on IntelliJ
-
-* setup `aws_config.js` file. Create a file in `source/console/src/aws_config.js`. Get the values from the bucket 
-`s3://bff-distributed-load-test-consolebucket-xxxxx/console/assets/aws_config.js`
-* Update the following files to use this config file:
-  - `source/console/src/App.js`
-  - `source/console/src/Components/Results/Results.js`
-* Create a run config and start:
-![Run Config](assets/Run_Config.png)
-* In the console in IntelliJ, press Command + Shift while clicking on the localhost link. this should open the page in Chrome:
-![Run Console](assets/Run_Console.png)
 
 ***
 
