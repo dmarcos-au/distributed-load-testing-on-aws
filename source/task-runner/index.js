@@ -16,10 +16,11 @@ const cloudwatchLogs = new AWS.CloudWatchLogs(options);
 exports.handler = async (event, context) => {
     console.log(JSON.stringify(event, null, 2));
 
-    const { scenario } = event;
+    const { scenario, generateDashboard } = event;
     const { testId, taskCount, testType, fileType } = scenario;
     const API_INTERVAL = parseFloat(process.env.API_INTERVAL) || 10;
     let runTaskCount = event.taskRunner ? event.taskRunner.runTaskCount : taskCount;
+    runTaskCount = generateDashboard ? 1 : runTaskCount; // only need one task to generate dashboard
     let timeRemaining;
     let isRunning = true;
     
@@ -51,6 +52,8 @@ exports.handler = async (event, context) => {
                 name: process.env.TASK_IMAGE,
                 environment: [
                     { name: 'S3_BUCKET', value: process.env.SCENARIOS_BUCKET },
+                    { name: 'S3_BUCKET_CONSOLE', value: process.env.CONSOLE_BUCKET },
+                    { name: 'RUN_REPORT', value: String(generateDashboard) },
                     { name: 'TEST_ID', value: testId },
                     { name: 'TEST_TYPE', value: testType },
                     { name: 'FILE_TYPE', value: fileType },
@@ -143,7 +146,7 @@ exports.handler = async (event, context) => {
         //if only running a single task
         if (runTaskCount === 1) {
             //if leader task
-            if(event.taskRunner) {
+            if(event.taskRunner && !generateDashboard) {
                 //Get IP Addresses of worker nodes
                 let ipAddresses = [];
                 let ipNetworkPortion;
@@ -254,7 +257,7 @@ exports.handler = async (event, context) => {
             } while (runTaskCount > 1 && parseInt(timeRemaining, 10) > 60000 ); //end if out of time or no tasks left
         }
         console.log('success');
-        return { scenario, prefix, isRunning, taskRunner: { runTaskCount, taskIds } };
+        return { scenario, prefix, isRunning, taskRunner: { runTaskCount, taskIds }, generateDashboard: runTaskCount === 0 };
     } catch (err) {
         console.error(err);
 

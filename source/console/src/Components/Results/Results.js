@@ -216,8 +216,8 @@ if (isNaN(testDuration) || testDuration === 0) {
             <div>
                 <div className="box">
                     <h2>Test Results</h2>
-                    <h3><a href={`/dashboard/${this.props.data.testId}/index.html`}>Dashboard</h3>
                     <Button id="info" color="link"><FontAwesomeIcon id="icon" icon={faInfoCircle} /> Info</Button>
+                    <h3><a href={`/dashboard/${this.props.data.testId}/index.html`}> Dashboard</a></h3>
                     <Row>
                         <Col xs="6" sm="3" md="3">
                             <Nav tabs vertical pills>

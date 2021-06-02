@@ -13,7 +13,7 @@ const lambda = new AWS.Lambda(options);
 
 exports.handler = async (event) => {
   console.log(JSON.stringify(event, null, 2));
-  const { scenario, taskRunner } = event;
+  const { scenario, taskRunner, generateDashboard = false } = event;
   const { testId } = scenario;
 
   try {
@@ -46,7 +46,7 @@ exports.handler = async (event) => {
     let numTasksRunning = runningTasks.reduce(((accumulator, task) => task.lastStatus === "RUNNING" ? ++accumulator : accumulator), 0);
     //add 1 to match scenario total for step functions
     numTasksRunning++;
-    const result = { scenario, isRunning, numTasksRunning, taskRunner };
+    const result = { scenario, isRunning, numTasksRunning, taskRunner, generateDashboard };
 
     /**
      * When prefix is provided, it means tests are running.
