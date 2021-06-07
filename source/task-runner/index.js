@@ -96,7 +96,7 @@ exports.handler = async (event, context) => {
                         }
                     ]
                 };    
-                await cloudwatchLogs.putMetricFilter(metricFilterParams).promise();
+                //await cloudwatchLogs.putMetricFilter(metricFilterParams).promise();
                 
                 //create widget 
                 let query = `SOURCE '${process.env.ECS_LOG_GROUP}' | \
@@ -122,8 +122,8 @@ exports.handler = async (event, context) => {
                 widgets.push(widget);
             }
             //create dashboard
-            const dashboardBody = {"widgets": widgets};
-            await cloudwatch.putDashboard({DashboardName: `EcsLoadTesting-${testId}`, DashboardBody: JSON.stringify(dashboardBody)}).promise();
+            //const dashboardBody = {"widgets": widgets};
+            //await cloudwatch.putDashboard({DashboardName: `EcsLoadTesting-${testId}`, DashboardBody: JSON.stringify(dashboardBody)}).promise();
         }
         /**
          * The max number of containers (taskCount) per task execution is 10 so if the taskCount is
